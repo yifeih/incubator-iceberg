@@ -19,25 +19,26 @@
 
 package com.netflix.iceberg.encryption;
 
-import com.netflix.iceberg.util.ByteBuffers;
+import com.netflix.iceberg.io.InputFile;
+import com.netflix.iceberg.io.OutputFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 
-class BaseEncryptionKeyMetadata implements EncryptionKeyMetadata {
-  private final ByteBuffer keyMetadata;
+public class PlaintextEncryptionManager implements EncryptionManager {
+  private static final Logger LOG = LoggerFactory.getLogger(PlaintextEncryptionManager.class);
 
-  BaseEncryptionKeyMetadata(ByteBuffer keyMetadata) {
-    this.keyMetadata = keyMetadata;
+  @Override
+  public InputFile decrypt(EncryptedInputFile encrypted) {
+    if (encrypted.keyMetadata().keyMetadata() != null) {
+      LOG.warn("File encryption key metadata is present, but currently using PlaintextEncryptionManager.");
+    }
+    return encrypted.encryptedInputFile();
   }
 
   @Override
-  public ByteBuffer keyMetadata() {
-    return keyMetadata;
-  }
-
-  @Override
-  public EncryptionKeyMetadata copy() {
-    return new BaseEncryptionKeyMetadata(
-        keyMetadata == null ? null : ByteBuffers.copy(keyMetadata));
+  public EncryptedOutputFile encrypt(OutputFile rawOutput) {
+    return EncryptedFiles.encryptedOutput(rawOutput, (ByteBuffer) null);
   }
 }
