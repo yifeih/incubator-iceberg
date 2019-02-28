@@ -19,8 +19,10 @@
 
 package com.netflix.iceberg;
 
-import com.netflix.iceberg.io.InputFile;
-import com.netflix.iceberg.io.OutputFile;
+import com.netflix.iceberg.encryption.EncryptionManager;
+import com.netflix.iceberg.io.FileIO;
+import com.netflix.iceberg.io.LocationProvider;
+import java.util.UUID;
 
 /**
  * SPI interface to abstract table metadata access and updates.
@@ -56,33 +58,45 @@ public interface TableOperations {
   void commit(TableMetadata base, TableMetadata metadata);
 
   /**
-   * Create a new {@link InputFile} for a path.
-   *
-   * @param path a string file path
-   * @return an InputFile instance for the path
+   * @return a {@link FileIO} to read and write table data and metadata files
    */
-  InputFile newInputFile(String path);
+  FileIO io();
 
   /**
-   * Create a new {@link OutputFile} in the table's metadata store.
-   *
-   * @param filename a string file name, not a full path
-   * @return an OutputFile instance for the path
+   * @return a {@link com.netflix.iceberg.encryption.EncryptionManager} to encrypt and decrypt
+   * data files.
    */
-  OutputFile newMetadataFile(String filename);
+  default EncryptionManager encryption() {
+    // TODO coming soon
+    throw new UnsupportedOperationException("Encryption is a work in progress.");
+  }
 
   /**
-   * Delete a file.
-   *
-   * @param path path to the file
+   * Given the name of a metadata file, obtain the full path of that file using an appropriate base
+   * location of the implementation's choosing.
+   * <p>
+   * The file may not exist yet, in which case the path should be returned as if it were to be created
+   * by e.g. {@link FileIO#newOutputFile(String)}.
    */
-  void deleteFile(String path);
+  String metadataFileLocation(String fileName);
+
+  /**
+   * Returns a {@link LocationProvider} that supplies locations for new new data files.
+   *
+   * @return a location provider configured for the current table state
+   */
+  LocationProvider locationProvider();
 
   /**
    * Create a new ID for a Snapshot
    *
    * @return a long snapshot ID
    */
-  long newSnapshotId();
+  default long newSnapshotId() {
+    UUID uuid = UUID.randomUUID();
+    long mostSignificantBits = uuid.getMostSignificantBits();
+    long leastSignificantBits = uuid.getLeastSignificantBits();
+    return Math.abs(mostSignificantBits ^ leastSignificantBits);
+  }
 
 }

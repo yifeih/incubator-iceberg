@@ -23,8 +23,8 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.netflix.iceberg.exceptions.CommitFailedException;
-import com.netflix.iceberg.io.InputFile;
-import com.netflix.iceberg.io.OutputFile;
+import com.netflix.iceberg.io.FileIO;
+import com.netflix.iceberg.io.LocationProvider;
 import com.netflix.iceberg.util.Tasks;
 import java.util.List;
 import java.util.Map;
@@ -101,11 +101,27 @@ class BaseTransaction implements Transaction {
   }
 
   @Override
+  public UpdateSchema updateSchema() {
+    checkLastOperationCommitted("UpdateSchema");
+    UpdateSchema schemaChange = new SchemaUpdate(transactionOps);
+    updates.add(schemaChange);
+    return schemaChange;
+  }
+
+  @Override
   public UpdateProperties updateProperties() {
     checkLastOperationCommitted("UpdateProperties");
     UpdateProperties props = new PropertiesUpdate(transactionOps);
     updates.add(props);
     return props;
+  }
+
+  @Override
+  public UpdateLocation updateLocation() {
+    checkLastOperationCommitted("UpdateLocation");
+    UpdateLocation setLocation = new SetLocation(transactionOps);
+    updates.add(setLocation);
+    return setLocation;
   }
 
   @Override
@@ -263,18 +279,18 @@ class BaseTransaction implements Transaction {
     }
 
     @Override
-    public InputFile newInputFile(String path) {
-      return ops.newInputFile(path);
+    public FileIO io() {
+      return ops.io();
     }
 
     @Override
-    public OutputFile newMetadataFile(String filename) {
-      return ops.newMetadataFile(filename);
+    public String metadataFileLocation(String fileName) {
+      return ops.metadataFileLocation(fileName);
     }
 
     @Override
-    public void deleteFile(String path) {
-      ops.deleteFile(path);
+    public LocationProvider locationProvider() {
+      return ops.locationProvider();
     }
 
     @Override
@@ -325,12 +341,17 @@ class BaseTransaction implements Transaction {
 
     @Override
     public UpdateSchema updateSchema() {
-      throw new UnsupportedOperationException("Transaction tables do not support schema updates");
+      return BaseTransaction.this.updateSchema();
     }
 
     @Override
     public UpdateProperties updateProperties() {
       return BaseTransaction.this.updateProperties();
+    }
+
+    @Override
+    public UpdateLocation updateLocation() {
+      return BaseTransaction.this.updateLocation();
     }
 
     @Override
@@ -371,6 +392,16 @@ class BaseTransaction implements Transaction {
     @Override
     public Transaction newTransaction() {
       throw new UnsupportedOperationException("Cannot create a transaction within a transaction");
+    }
+
+    @Override
+    public FileIO io() {
+      return transactionOps.io();
+    }
+
+    @Override
+    public LocationProvider locationProvider() {
+      return transactionOps.locationProvider();
     }
   }
 }

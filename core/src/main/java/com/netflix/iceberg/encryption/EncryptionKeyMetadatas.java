@@ -17,17 +17,19 @@
  * under the License.
  */
 
-package com.netflix.iceberg;
+package com.netflix.iceberg.encryption;
 
-import com.netflix.iceberg.expressions.Expression;
-import java.util.Collection;
-import java.util.Iterator;
+import java.nio.ByteBuffer;
 
-/**
- * Interface used by BaseSnapshot to back FilteredSnapshot.
- */
-interface SnapshotIterable {
-  Iterator<DataFile> iterator(Expression partFilter,
-                              Expression rowFilter,
-                              Collection<String> columns);
+public class EncryptionKeyMetadatas {
+
+  public static EncryptionKeyMetadata of(ByteBuffer keyMetadata) {
+    return new BaseEncryptionKeyMetadata(keyMetadata);
+  }
+
+  public static EncryptionKeyMetadata of(byte[] keyMetadata) {
+    return of(ByteBuffer.wrap(keyMetadata));
+  }
+
+  private EncryptionKeyMetadatas() {}
 }

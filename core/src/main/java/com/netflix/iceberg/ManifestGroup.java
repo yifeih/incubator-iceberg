@@ -19,6 +19,9 @@
 
 package com.netflix.iceberg;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
@@ -26,6 +29,7 @@ import com.google.common.collect.Sets;
 import com.netflix.iceberg.expressions.Evaluator;
 import com.netflix.iceberg.expressions.Expression;
 import com.netflix.iceberg.expressions.Expressions;
+import com.netflix.iceberg.expressions.InclusiveManifestEvaluator;
 import com.netflix.iceberg.io.CloseableIterable;
 import com.netflix.iceberg.types.Types;
 import java.io.Closeable;
@@ -37,18 +41,28 @@ class ManifestGroup {
   private static final Types.StructType EMPTY_STRUCT = Types.StructType.of();
 
   private final TableOperations ops;
-  private final Set<String> manifests;
+  private final Set<ManifestFile> manifests;
   private final Expression dataFilter;
   private final Expression fileFilter;
   private final boolean ignoreDeleted;
   private final List<String> columns;
 
-  ManifestGroup(TableOperations ops, Iterable<String> manifests) {
+  private final LoadingCache<Integer, InclusiveManifestEvaluator> EVAL_CACHE = CacheBuilder
+      .newBuilder()
+      .build(new CacheLoader<Integer, InclusiveManifestEvaluator>() {
+        @Override
+        public InclusiveManifestEvaluator load(Integer specId) {
+          PartitionSpec spec = ops.current().spec(specId);
+          return new InclusiveManifestEvaluator(spec, dataFilter);
+        }
+      });
+
+  ManifestGroup(TableOperations ops, Iterable<ManifestFile> manifests) {
     this(ops, Sets.newHashSet(manifests), Expressions.alwaysTrue(), Expressions.alwaysTrue(),
         false, ImmutableList.of("*"));
   }
 
-  private ManifestGroup(TableOperations ops, Set<String> manifests,
+  private ManifestGroup(TableOperations ops, Set<ManifestFile> manifests,
                         Expression dataFilter, Expression fileFilter, boolean ignoreDeleted,
                         List<String> columns) {
     this.ops = ops;
@@ -94,10 +108,21 @@ class ManifestGroup {
     Evaluator evaluator = new Evaluator(DataFile.getType(EMPTY_STRUCT), fileFilter);
     List<Closeable> toClose = Lists.newArrayList();
 
+    Iterable<ManifestFile> matchingManifests = Iterables.filter(manifests,
+        manifest -> EVAL_CACHE.getUnchecked(manifest.partitionSpecId()).eval(manifest));
+
+    if (ignoreDeleted) {
+      // remove any manifests that don't have any existing or added files. if either the added or
+      // existing files count is missing, the manifest must be scanned.
+      matchingManifests = Iterables.filter(manifests, manifest ->
+          manifest.addedFilesCount() == null || manifest.existingFilesCount() == null ||
+              manifest.addedFilesCount() + manifest.existingFilesCount() > 0);
+    }
+
     Iterable<Iterable<ManifestEntry>> readers = Iterables.transform(
-        manifests,
+        matchingManifests,
         manifest -> {
-          ManifestReader reader = ManifestReader.read(ops.newInputFile(manifest));
+          ManifestReader reader = ManifestReader.read(ops.io().newInputFile(manifest.path()));
           FilteredManifest filtered = reader.filterRows(dataFilter).select(columns);
           toClose.add(reader);
           return Iterables.filter(

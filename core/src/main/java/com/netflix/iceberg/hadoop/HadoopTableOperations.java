@@ -19,14 +19,17 @@
 
 package com.netflix.iceberg.hadoop;
 
+import com.google.common.base.Preconditions;
+import com.netflix.iceberg.LocationProviders;
+import com.netflix.iceberg.io.FileIO;
 import com.netflix.iceberg.TableMetadata;
 import com.netflix.iceberg.TableMetadataParser;
 import com.netflix.iceberg.TableOperations;
+import com.netflix.iceberg.TableProperties;
 import com.netflix.iceberg.exceptions.CommitFailedException;
 import com.netflix.iceberg.exceptions.RuntimeIOException;
 import com.netflix.iceberg.exceptions.ValidationException;
-import com.netflix.iceberg.io.InputFile;
-import com.netflix.iceberg.io.OutputFile;
+import com.netflix.iceberg.io.LocationProvider;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
@@ -36,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import static com.netflix.iceberg.TableMetadataParser.getFileExtension;
@@ -45,7 +49,7 @@ import static com.netflix.iceberg.TableMetadataParser.getFileExtension;
  * <p>
  * This maintains metadata in a "metadata" folder under the table location.
  */
-class HadoopTableOperations implements TableOperations {
+public class HadoopTableOperations implements TableOperations {
   private static final Logger LOG = LoggerFactory.getLogger(HadoopTableOperations.class);
 
   private final Configuration conf;
@@ -53,8 +57,9 @@ class HadoopTableOperations implements TableOperations {
   private TableMetadata currentMetadata = null;
   private Integer version = null;
   private boolean shouldRefresh = true;
+  private HadoopFileIO defaultFileIo = null;
 
-  HadoopTableOperations(Path location, Configuration conf) {
+  protected HadoopTableOperations(Path location, Configuration conf) {
     this.conf = conf;
     this.location = location;
   }
@@ -70,7 +75,7 @@ class HadoopTableOperations implements TableOperations {
   public TableMetadata refresh() {
     int ver = version != null ? version : readVersionHint();
     Path metadataFile = metadataFile(ver);
-    FileSystem fs = Util.getFS(metadataFile, conf);
+    FileSystem fs = getFS(metadataFile, conf);
     try {
       // don't check if the file exists if version is non-null because it was already checked
       if (version == null && !fs.exists(metadataFile)) {
@@ -91,7 +96,7 @@ class HadoopTableOperations implements TableOperations {
     }
     this.version = ver;
     this.currentMetadata = TableMetadataParser.read(this,
-        HadoopInputFile.fromPath(metadataFile, conf));
+        io().newInputFile(metadataFile.toString()));
     this.shouldRefresh = false;
     return currentMetadata;
   }
@@ -107,12 +112,18 @@ class HadoopTableOperations implements TableOperations {
       return;
     }
 
+    Preconditions.checkArgument(base == null || base.location().equals(metadata.location()),
+        "Hadoop path-based tables cannot be relocated");
+    Preconditions.checkArgument(
+        !metadata.properties().containsKey(TableProperties.WRITE_METADATA_LOCATION),
+        "Hadoop path-based tables cannot relocate metadata");
+
     Path tempMetadataFile = metadataPath(UUID.randomUUID().toString() + getFileExtension(conf));
-    TableMetadataParser.write(metadata, HadoopOutputFile.fromPath(tempMetadataFile, conf));
+    TableMetadataParser.write(metadata, io().newOutputFile(tempMetadataFile.toString()));
 
     int nextVersion = (version != null ? version : 0) + 1;
     Path finalMetadataFile = metadataFile(nextVersion);
-    FileSystem fs = Util.getFS(tempMetadataFile, conf);
+    FileSystem fs = getFS(tempMetadataFile, conf);
 
     try {
       if (fs.exists(finalMetadataFile)) {
@@ -142,29 +153,21 @@ class HadoopTableOperations implements TableOperations {
   }
 
   @Override
-  public InputFile newInputFile(String path) {
-    return HadoopInputFile.fromPath(new Path(path), conf);
-  }
-
-  @Override
-  public OutputFile newMetadataFile(String filename) {
-    return HadoopOutputFile.fromPath(metadataPath(filename), conf);
-  }
-
-  @Override
-  public void deleteFile(String path) {
-    Path toDelete = new Path(path);
-    FileSystem fs = Util.getFS(toDelete, conf);
-    try {
-      fs.delete(toDelete, false /* not recursive */ );
-    } catch (IOException e) {
-      throw new RuntimeIOException(e, "Failed to delete file: %s", path);
+  public FileIO io() {
+    if (defaultFileIo == null) {
+      defaultFileIo = new HadoopFileIO(conf);
     }
+    return defaultFileIo;
   }
 
   @Override
-  public long newSnapshotId() {
-    return System.currentTimeMillis();
+  public LocationProvider locationProvider() {
+    return LocationProviders.locationsFor(current().location(), current().properties());
+  }
+
+  @Override
+  public String metadataFileLocation(String fileName) {
+    return metadataPath(fileName).toString();
   }
 
   private Path metadataFile(int version) {
@@ -181,10 +184,10 @@ class HadoopTableOperations implements TableOperations {
 
   private void writeVersionHint(int version) {
     Path versionHintFile = versionHintFile();
-    FileSystem fs = Util.getFS(versionHintFile, conf);
+    FileSystem fs = getFS(versionHintFile, conf);
 
     try (FSDataOutputStream out = fs.create(versionHintFile, true /* overwrite */ )) {
-      out.write(String.valueOf(version).getBytes("UTF-8"));
+      out.write(String.valueOf(version).getBytes(StandardCharsets.UTF_8));
 
     } catch (IOException e) {
       LOG.warn("Failed to update version hint", e);
@@ -194,7 +197,7 @@ class HadoopTableOperations implements TableOperations {
   private int readVersionHint() {
     Path versionHintFile = versionHintFile();
     try {
-      FileSystem fs = versionHintFile.getFileSystem(conf);
+      FileSystem fs = Util.getFS(versionHintFile, conf);
       if (!fs.exists(versionHintFile)) {
         return 0;
       }
@@ -206,5 +209,9 @@ class HadoopTableOperations implements TableOperations {
     } catch (IOException e) {
       throw new RuntimeIOException(e, "Failed to get file system for path: %s", versionHintFile);
     }
+  }
+
+  protected FileSystem getFS(Path path, Configuration conf) {
+    return Util.getFS(path, conf);
   }
 }

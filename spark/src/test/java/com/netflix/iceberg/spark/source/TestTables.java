@@ -21,6 +21,8 @@ package com.netflix.iceberg.spark.source;
 
 import com.google.common.collect.Maps;
 import com.netflix.iceberg.BaseTable;
+import com.netflix.iceberg.LocationProviders;
+import com.netflix.iceberg.io.FileIO;
 import com.netflix.iceberg.Files;
 import com.netflix.iceberg.PartitionSpec;
 import com.netflix.iceberg.Schema;
@@ -31,7 +33,9 @@ import com.netflix.iceberg.exceptions.AlreadyExistsException;
 import com.netflix.iceberg.exceptions.CommitFailedException;
 import com.netflix.iceberg.exceptions.RuntimeIOException;
 import com.netflix.iceberg.io.InputFile;
+import com.netflix.iceberg.io.LocationProvider;
 import com.netflix.iceberg.io.OutputFile;
+import parquet.Preconditions;
 import java.io.File;
 import java.util.Map;
 
@@ -51,7 +55,16 @@ class TestTables {
 
   static TestTable load(String name) {
     TestTableOperations ops = new TestTableOperations(name);
+    if (ops.current() == null) {
+      return null;
+    }
     return new TestTable(ops, name);
+  }
+
+  static boolean drop(String name) {
+    synchronized (METADATA) {
+      return METADATA.remove(name) != null;
+    }
   }
 
   static class TestTable extends BaseTable {
@@ -62,7 +75,8 @@ class TestTables {
       this.ops = ops;
     }
 
-    TestTableOperations ops() {
+    @Override
+    public TestTableOperations operations() {
       return ops;
     }
   }
@@ -145,22 +159,20 @@ class TestTables {
     }
 
     @Override
-    public InputFile newInputFile(String path) {
-      return Files.localInput(path);
+    public FileIO io() {
+      return new LocalFileIO();
     }
 
     @Override
-    public OutputFile newMetadataFile(String filename) {
-      File metadata = new File(current.location(), "metadata");
-      metadata.mkdirs();
-      return Files.localOutput(new File(metadata, filename));
+    public LocationProvider locationProvider() {
+      Preconditions.checkNotNull(current,
+          "Current metadata should not be null when locatinProvider is called");
+      return LocationProviders.locationsFor(current.location(), current.properties());
     }
 
     @Override
-    public void deleteFile(String path) {
-      if (!new File(path).delete()) {
-        throw new RuntimeIOException("Failed to delete file: " + path);
-      }
+    public String metadataFileLocation(String fileName) {
+      return new File(new File(current.location(), "metadata"), fileName).getAbsolutePath();
     }
 
     @Override
@@ -168,6 +180,26 @@ class TestTables {
       long nextSnapshotId = lastSnapshotId + 1;
       this.lastSnapshotId = nextSnapshotId;
       return nextSnapshotId;
+    }
+  }
+  
+  static class LocalFileIO implements FileIO {
+
+    @Override
+    public InputFile newInputFile(String path) {
+      return Files.localInput(path);
+    }
+
+    @Override
+    public OutputFile newOutputFile(String path) {
+      return Files.localOutput(new File(path));
+    }
+
+    @Override
+    public void deleteFile(String path) {
+      if (!new File(path).delete()) {
+        throw new RuntimeIOException("Failed to delete file: " + path);
+      }
     }
   }
 }
