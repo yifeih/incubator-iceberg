@@ -48,45 +48,6 @@ public class IcebergSource implements
     return "iceberg";
   }
 
-//  @Override
-//  public DataSourceReader createReader(DataSourceOptions options) {
-//    Configuration conf = new Configuration(lazyBaseConf());
-//    Table table = getTableAndResolveHadoopConfiguration(options, conf);
-//    return new Reader(table);
-//  }
-//
-//  @Override
-//  public Optional<DataSourceWriter> createWriter(String jobId, StructType dfStruct, SaveMode mode,
-//                                                   DataSourceOptions options) {
-//    Preconditions.checkArgument(mode == SaveMode.Append, "Save mode %s is not supported", mode);
-//    Configuration conf = new Configuration(lazyBaseConf());
-//    Table table = getTableAndResolveHadoopConfiguration(options, conf);
-//
-//    Schema dfSchema = SparkSchemaUtil.convert(table.schema(), dfStruct);
-//    List<String> errors = CheckCompatibility.writeCompatibilityErrors(table.schema(), dfSchema);
-//    if (!errors.isEmpty()) {
-//      StringBuilder sb = new StringBuilder();
-//      sb.append("Cannot write incompatible dataframe to table with schema:\n")
-//          .append(table.schema()).append("\nProblems:");
-//      for (String error : errors) {
-//        sb.append("\n* ").append(error);
-//      }
-//      throw new IllegalArgumentException(sb.toString());
-//    }
-//
-//    Optional<String> formatOption = options.get("iceberg.write.format");
-//    FileFormat format;
-//    if (formatOption.isPresent()) {
-//      format = FileFormat.valueOf(formatOption.get().toUpperCase(Locale.ENGLISH));
-//    } else {
-//      format = FileFormat.valueOf(table.properties()
-//          .getOrDefault(DEFAULT_FILE_FORMAT, DEFAULT_FILE_FORMAT_DEFAULT)
-//          .toUpperCase(Locale.ENGLISH));
-//    }
-//
-//    return Optional.of(new Writer(table, format));
-//  }
-
   protected Table findTable(DataSourceOptions options, Configuration conf) {
     Optional<String> location = options.get("path");
     Preconditions.checkArgument(location.isPresent(),

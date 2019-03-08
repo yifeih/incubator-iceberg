@@ -19,16 +19,21 @@
 
 package com.netflix.iceberg.spark.source;
 
+import com.google.common.collect.Lists;
 import com.netflix.iceberg.FileFormat;
 import com.netflix.iceberg.Table;
+import com.netflix.iceberg.expressions.Expression;
+import com.netflix.iceberg.spark.SparkFilters;
+import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
 import org.apache.spark.sql.sources.v2.SupportsBatchRead;
 import org.apache.spark.sql.sources.v2.SupportsBatchWrite;
-import org.apache.spark.sql.sources.v2.reader.ScanBuilder;
+import org.apache.spark.sql.sources.v2.reader.*;
 import org.apache.spark.sql.sources.v2.writer.BatchWrite;
 import org.apache.spark.sql.sources.v2.writer.WriteBuilder;
 import org.apache.spark.sql.types.StructType;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -45,8 +50,7 @@ public class IcebergSparkTable implements SupportsBatchRead, SupportsBatchWrite 
 
     @Override
     public ScanBuilder newScanBuilder(DataSourceOptions options) {
-
-
+        return new IcebergReaderBuilder(table);
     }
 
     @Override
@@ -99,5 +103,57 @@ public class IcebergSparkTable implements SupportsBatchRead, SupportsBatchWrite 
                     .toUpperCase(Locale.ENGLISH)));
         }
 
+    }
+
+    private static class IcebergReaderBuilder implements ScanBuilder,
+        SupportsPushDownFilters,
+        SupportsPushDownRequiredColumns {
+
+        private static final Filter[] NO_FILTERS = new Filter[0];
+
+        private final Table table;
+        private Filter[] pushedFilters = NO_FILTERS;
+        private List<Expression> filterExpressions = Lists.newArrayList();
+        private StructType requestedSchema = null;
+
+        public IcebergReaderBuilder(Table table) {
+            this.table = table;
+        }
+
+        @Override
+        public Filter[] pushFilters(Filter[] filters) {
+            List<Expression> expressions = Lists.newArrayListWithExpectedSize(filters.length);
+            List<Filter> pushed = Lists.newArrayListWithExpectedSize(filters.length);
+
+            for (Filter filter : filters) {
+                Expression expr = SparkFilters.convert(filter);
+                if (expr != null) {
+                    expressions.add(expr);
+                    pushed.add(filter);
+                }
+            }
+
+            this.filterExpressions = expressions;
+            this.pushedFilters = pushed.toArray(new Filter[0]);
+
+            // Spark doesn't support residuals per task, so return all filters
+            // to get Spark to handle record-level filtering
+            return filters;
+        }
+
+        @Override
+        public Filter[] pushedFilters() {
+            return pushedFilters;
+        }
+
+        @Override
+        public void pruneColumns(StructType requiredSchema) {
+            this.requestedSchema = requiredSchema;
+        }
+
+        @Override
+        public Scan build() {
+            return new Reader(table, filterExpressions, requestedSchema);
+        }
     }
 }
