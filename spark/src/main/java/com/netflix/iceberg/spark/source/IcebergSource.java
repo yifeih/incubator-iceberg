@@ -33,6 +33,7 @@ import org.apache.spark.sql.sources.DataSourceRegister;
 import org.apache.spark.sql.sources.v2.DataSourceV2;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
 import org.apache.spark.sql.sources.v2.ReadSupport;
+import org.apache.spark.sql.sources.v2.TableProvider;
 import org.apache.spark.sql.sources.v2.WriteSupport;
 import org.apache.spark.sql.sources.v2.reader.DataSourceReader;
 import org.apache.spark.sql.sources.v2.writer.DataSourceWriter;
@@ -45,7 +46,9 @@ import java.util.Optional;
 import static com.netflix.iceberg.TableProperties.DEFAULT_FILE_FORMAT;
 import static com.netflix.iceberg.TableProperties.DEFAULT_FILE_FORMAT_DEFAULT;
 
-public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, DataSourceRegister {
+public class IcebergSource implements
+        TableProvider,
+        DataSourceRegister {
 
   private SparkSession lazySpark = null;
   private Configuration lazyConf = null;
@@ -135,5 +138,15 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
     options.keySet().stream()
         .filter(key -> key.startsWith("iceberg.hadoop"))
         .forEach(key -> baseConf.set(key.replaceFirst("iceberg.hadoop", ""), options.get(key)));
+  }
+
+  @Override
+  public org.apache.spark.sql.sources.v2.Table getTable(DataSourceOptions options) {
+    return null;
+  }
+
+  @Override
+  public org.apache.spark.sql.sources.v2.Table getTable(DataSourceOptions options, StructType schema) {
+    return null;
   }
 }

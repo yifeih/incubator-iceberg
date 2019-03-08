@@ -18,7 +18,11 @@
  */
 
 buildscript {
-  repositories { jcenter() }
+  repositories {
+      jcenter()
+      maven { url  "http://palantir.bintray.com/releases" }
+  }
+
   dependencies {
     classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.0'
     classpath 'com.netflix.nebula:gradle-aggregate-javadocs-plugin:2.2.+'
@@ -51,6 +55,7 @@ subprojects {
   apply plugin: 'nebula.maven-base-publish'
 
   repositories {
+    maven { url  "http://palantir.bintray.com/releases" }
     mavenCentral()
     mavenLocal()
   }
@@ -66,16 +71,16 @@ subprojects {
   }
 
   ext {
-    hadoopVersion = '2.7.3'
+    hadoopVersion = '3.2.0-palantir.8'
     avroVersion = '1.8.2'
     orcVersion = '1.4.2'
-    parquetVersion = '1.10.0'
+    parquetVersion = '1.12.0-palantir.4'
     hiveVersion = '3.1.0'
 
-    jacksonVersion = '2.6.7'
+    jacksonVersion = '2.7.3'
 
     scalaVersion = '2.11'
-    sparkVersion = '2.4.0'
+    sparkVersion = '3.0.0-palantir.18'
   }
 
   sourceCompatibility = '1.8'
