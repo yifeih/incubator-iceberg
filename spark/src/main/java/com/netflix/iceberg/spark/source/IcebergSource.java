@@ -100,21 +100,6 @@ public class IcebergSource implements
 
   @Override
   public org.apache.spark.sql.sources.v2.Table getTable(DataSourceOptions options, StructType schema) {
-    Configuration conf = new Configuration(lazyBaseConf());
-    Table table = getTableAndResolveHadoopConfiguration(options, conf);
-
-    Schema dfSchema = SparkSchemaUtil.convert(table.schema(), schema);
-    List<String> errors = CheckCompatibility.writeCompatibilityErrors(table.schema(), dfSchema);
-    if (!errors.isEmpty()) {
-      StringBuilder sb = new StringBuilder();
-      sb.append("Cannot write incompatible dataframe to table with schema:\n")
-          .append(table.schema()).append("\nProblems:");
-      for (String error : errors) {
-        sb.append("\n* ").append(error);
-      }
-      throw new IllegalArgumentException(sb.toString());
-    }
-
-    return new IcebergSparkTable(table);
+    throw new UnsupportedOperationException("Schema should never be passed into an iceberg table");
   }
 }
