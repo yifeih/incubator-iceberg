@@ -58,9 +58,7 @@ public class IcebergSparkTable implements SupportsBatchRead, SupportsBatchWrite 
         IcebergWriterBuilder writerBuilder = new IcebergWriterBuilder(table);
 
         Optional<String> formatOption = options.get("iceberg.write.format");
-        if (formatOption.isPresent()) {
-            writerBuilder = writerBuilder.setFileFormat(formatOption.get());
-        }
+        formatOption.ifPresent(writerBuilder::setFileFormat);
         return writerBuilder;
     }
 
