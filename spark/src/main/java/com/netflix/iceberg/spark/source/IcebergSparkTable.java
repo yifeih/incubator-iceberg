@@ -77,30 +77,22 @@ public class IcebergSparkTable implements SupportsBatchRead, SupportsBatchWrite 
 
     private static class IcebergWriterBuilder implements WriteBuilder {
         private final Table table;
-        private final Optional<FileFormat> fileFormat;
+        private FileFormat fileFormat;
 
         public IcebergWriterBuilder(Table table) {
             this.table = table;
-            this.fileFormat = Optional.empty();
+            this.fileFormat = FileFormat.valueOf(table.properties()
+                .getOrDefault(DEFAULT_FILE_FORMAT, DEFAULT_FILE_FORMAT_DEFAULT)
+                .toUpperCase(Locale.ENGLISH));
         }
 
-        public IcebergWriterBuilder(Table table, FileFormat fileFormat) {
-            this.table = table;
-            this.fileFormat = Optional.of(fileFormat);
-        }
-
-        public IcebergWriterBuilder setFileFormat(String format) {
-            return new IcebergWriterBuilder(this.table,
-                FileFormat.valueOf(format.toUpperCase(Locale.ENGLISH)));
+        public void setFileFormat(String format) {
+            fileFormat = FileFormat.valueOf(format.toUpperCase(Locale.ENGLISH));
         }
 
         @Override
         public BatchWrite buildForBatch() {
-            fileFormat.ifPresent(fileFormat1 -> new Writer(table, fileFormat1));
-            return new Writer(table,
-                FileFormat.valueOf(table.properties()
-                    .getOrDefault(DEFAULT_FILE_FORMAT, DEFAULT_FILE_FORMAT_DEFAULT)
-                    .toUpperCase(Locale.ENGLISH)));
+            return new Writer(table, fileFormat);
         }
 
     }
