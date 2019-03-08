@@ -26,6 +26,7 @@ import com.netflix.iceberg.exceptions.CommitFailedException;
 import com.netflix.iceberg.exceptions.RuntimeIOException;
 import com.netflix.iceberg.util.Tasks;
 import com.netflix.iceberg.util.ThreadPools;
+import io.netty.util.internal.ConcurrentSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.IOException;
@@ -154,7 +155,7 @@ class RemoveSnapshots implements ExpireSnapshots {
       }
     }
 
-    Set<String> filesToDelete = Sets.newConcurrentHashSet();
+    Set<String> filesToDelete = new ConcurrentSet<>();
     Tasks.foreach(allManifests)
         .noRetry().suppressFailureWhenFinished()
         .executeWith(ThreadPools.getWorkerPool())

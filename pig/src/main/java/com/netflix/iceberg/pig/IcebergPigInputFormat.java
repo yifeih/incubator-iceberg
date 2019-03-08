@@ -36,7 +36,7 @@ import com.netflix.iceberg.parquet.Parquet;
 import com.netflix.iceberg.types.Type;
 import com.netflix.iceberg.types.TypeUtil;
 import com.netflix.iceberg.types.Types;
-import org.apache.commons.lang3.SerializationUtils;
+import org.apache.commons.lang.SerializationUtils;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapreduce.InputFormat;
 import org.apache.hadoop.mapreduce.InputSplit;
