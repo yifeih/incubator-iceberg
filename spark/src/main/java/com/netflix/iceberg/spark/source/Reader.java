@@ -19,13 +19,13 @@
 
 package com.netflix.iceberg.spark.source;
 
-import com.google.common.base.Functions;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.netflix.iceberg.CombinedScanTask;
 import com.netflix.iceberg.DataFile;
 import com.netflix.iceberg.encryption.EncryptedFiles;
-import com.netflix.iceberg.encryption.EncryptedInputFile;
 import com.netflix.iceberg.encryption.EncryptionManager;
 import com.netflix.iceberg.io.FileIO;
 import com.netflix.iceberg.FileScanTask;
@@ -73,7 +73,6 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark.unsafe.types.UTF8String;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.Serializable;
@@ -285,6 +284,7 @@ class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushD
     private final Schema tableSchema;
     private final Schema expectedSchema;
     private final FileIO fileIo;
+    private final Map<String, InputFile> inputFiles;
 
     private final Iterator<FileScanTask> tasks;
     private final Map<String, InputFile> inputFiles;
@@ -299,6 +299,14 @@ class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushD
       this.tasks = task.files().iterator();
       this.tableSchema = tableSchema;
       this.expectedSchema = expectedSchema;
+      Iterable<InputFile> decryptedFiles = encryptionManager.decrypt(Iterables.transform(task.files(),
+          fileScanTask ->
+              EncryptedFiles.encryptedInput(
+                  this.fileIo.newInputFile(fileScanTask.file().path().toString()),
+                  fileScanTask.file().keyMetadata())));
+      ImmutableMap.Builder<String, InputFile> inputFileBuilder = ImmutableMap.builder();
+      decryptedFiles.forEach(decrypted -> inputFileBuilder.put(decrypted.location(), decrypted));
+      this.inputFiles = inputFileBuilder.build();
       // open last because the schemas and fileIo must be set
       Iterable<InputFile> inputFiles = encryptionManager.decrypt(() -> task.files().stream()
           .map(fileScanTask ->
@@ -495,7 +503,12 @@ class Reader implements DataSourceReader, SupportsPushDownFilters, SupportsPushD
     @Override
     public InternalRow apply(StructLike tuple) {
       for (int i = 0; i < types.length; i += 1) {
-        reusedRow.update(i, convert(tuple.get(positions[i], javaTypes[i]), types[i]));
+        Object value = tuple.get(positions[i], javaTypes[i]);
+        if (value != null) {
+          reusedRow.update(i, convert(value, types[i]));
+        } else {
+          reusedRow.setNullAt(i);
+        }
       }
 
       return reusedRow;

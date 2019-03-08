@@ -29,7 +29,6 @@ import com.netflix.iceberg.DataFile;
 import com.netflix.iceberg.DataFiles;
 import com.netflix.iceberg.FileFormat;
 import com.netflix.iceberg.encryption.EncryptedOutputFile;
-import com.netflix.iceberg.encryption.EncryptionKeyMetadata;
 import com.netflix.iceberg.encryption.EncryptionManager;
 import com.netflix.iceberg.io.FileIO;
 import com.netflix.iceberg.Metrics;
@@ -53,6 +52,7 @@ import org.apache.spark.sql.sources.v2.writer.WriterCommitMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
@@ -196,8 +196,8 @@ class Writer implements DataSourceWriter {
       String filename = format.addExtension(String.format("%05d-%d-%s", partitionId, taskId, uuid));
       AppenderFactory<InternalRow> factory = new SparkAppenderFactory();
       if (spec.fields().isEmpty()) {
-        return new UnpartitionedWriter(
-            fileIo.newOutputFile(locations.newDataLocation(filename)), format, factory, fileIo, encryptionManager);
+        OutputFile outputFile = fileIo.newOutputFile(locations.newDataLocation(filename));
+        return new UnpartitionedWriter(encryptionManager.encrypt(outputFile), format, factory, fileIo);
       } else {
         Function<PartitionKey, EncryptedOutputFile> newOutputFileForKey =
             key -> {
@@ -249,22 +249,18 @@ class Writer implements DataSourceWriter {
 
   private static class UnpartitionedWriter implements DataWriter<InternalRow>, Closeable {
     private final FileIO fileIo;
-    private final OutputFile file;
     private FileAppender<InternalRow> appender = null;
     private Metrics metrics = null;
-    private final EncryptionKeyMetadata keyMetadata;
+    private final EncryptedOutputFile file;
 
     UnpartitionedWriter(
-        OutputFile file,
+        EncryptedOutputFile outputFile,
         FileFormat format,
         AppenderFactory<InternalRow> factory,
-        FileIO fileIo,
-        EncryptionManager encryptionManager) {
+        FileIO fileIo) {
       this.fileIo = fileIo;
-      EncryptedOutputFile encryptedOutput = encryptionManager.encrypt(file);
-      this.file = encryptedOutput.encryptingOutputFile();
-      this.keyMetadata = encryptedOutput.keyMetadata();
-      this.appender = factory.newAppender(this.file, format);
+      this.file = outputFile;
+      this.appender = factory.newAppender(file.encryptingOutputFile(), format);
     }
 
     @Override
@@ -279,11 +275,11 @@ class Writer implements DataSourceWriter {
       close();
 
       if (metrics.recordCount() == 0L) {
-        fileIo.deleteFile(file);
+        fileIo.deleteFile(file.encryptingOutputFile());
         return new TaskCommit();
       }
 
-      DataFile dataFile = DataFiles.fromInputFile(file.toInputFile(), null, metrics, keyMetadata);
+      DataFile dataFile = DataFiles.fromEncryptedOutputFile(file, null, metrics);
 
       return new TaskCommit(dataFile);
     }
@@ -293,7 +289,7 @@ class Writer implements DataSourceWriter {
       Preconditions.checkArgument(appender != null, "Abort called on a closed writer: %s", this);
 
       close();
-      fileIo.deleteFile(file);
+      fileIo.deleteFile(file.encryptingOutputFile());
     }
 
     @Override
@@ -385,8 +381,7 @@ class Writer implements DataSourceWriter {
         this.currentAppender = null;
 
         DataFile dataFile = DataFiles.builder(spec)
-            .withInputFile(currentFile.encryptingOutputFile().toInputFile())
-            .withEncryptionKeyMetadata(currentFile.keyMetadata())
+            .withEncryptedOutputFile(currentFile)
             .withPartition(currentKey)
             .withMetrics(metrics)
             .build();

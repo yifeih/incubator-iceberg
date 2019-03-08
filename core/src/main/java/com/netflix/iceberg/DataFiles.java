@@ -20,6 +20,8 @@
 package com.netflix.iceberg;
 
 import com.google.common.base.Preconditions;
+import com.netflix.iceberg.encryption.EncryptedInputFile;
+import com.netflix.iceberg.encryption.EncryptedOutputFile;
 import com.netflix.iceberg.encryption.EncryptionKeyMetadata;
 import com.netflix.iceberg.hadoop.HadoopInputFile;
 import com.netflix.iceberg.io.InputFile;
@@ -136,16 +138,18 @@ public class DataFiles {
         location, format, partition, file.getLength(), DEFAULT_BLOCK_SIZE, metrics);
   }
 
-  public static DataFile fromInputFile(InputFile file, PartitionData partition, Metrics metrics,
-                                       EncryptionKeyMetadata keyMetadata) {
-    if (file instanceof HadoopInputFile) {
+  public static DataFile fromEncryptedOutputFile(EncryptedOutputFile encryptedFile, PartitionData partition,
+                                                Metrics metrics) {
+    EncryptionKeyMetadata keyMetadata = encryptedFile.keyMetadata();
+    InputFile file = encryptedFile.encryptingOutputFile().toInputFile();
+    if (encryptedFile instanceof HadoopInputFile) {
       return fromStat(((HadoopInputFile) file).getStat(), partition, metrics, keyMetadata);
     }
 
     String location = file.location();
     FileFormat format = FileFormat.fromFileName(location);
     return new GenericDataFile(
-        location, format, partition, file.getLength(), DEFAULT_BLOCK_SIZE, metrics, keyMetadata.keyMetadata());
+        location, format, partition, file.getLength(), DEFAULT_BLOCK_SIZE, metrics, keyMetadata.buffer());
   }
 
   public static DataFile fromStat(FileStatus stat, PartitionData partition, Metrics metrics) {
@@ -160,7 +164,7 @@ public class DataFiles {
     String location = stat.getPath().toString();
     FileFormat format = FileFormat.fromFileName(location);
     return new GenericDataFile(
-        location, format, partition, stat.getLen(), stat.getBlockSize(), metrics, keyMetadata.keyMetadata());
+        location, format, partition, stat.getLen(), stat.getBlockSize(), metrics, keyMetadata.buffer());
   }
 
   public static DataFile fromParquetInputFile(InputFile file,
@@ -273,6 +277,12 @@ public class DataFiles {
       return this;
     }
 
+    public Builder withEncryptedOutputFile(EncryptedOutputFile encryptedFile) {
+      withInputFile(encryptedFile.encryptingOutputFile().toInputFile());
+      withEncryptionKeyMetadata(encryptedFile.keyMetadata());
+      return this;
+    }
+
     public Builder withPath(String filePath) {
       this.filePath = filePath;
       return this;
@@ -332,7 +342,7 @@ public class DataFiles {
     }
 
     public Builder withEncryptionKeyMetadata(EncryptionKeyMetadata keyMetadata) {
-      return withEncryptionKeyMetadata(keyMetadata.keyMetadata());
+      return withEncryptionKeyMetadata(keyMetadata.buffer());
     }
 
     public Builder withEncryptionKeyMetadata(byte[] keyMetadata) {
