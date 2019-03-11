@@ -72,7 +72,6 @@ import static com.netflix.iceberg.TableProperties.COMMIT_TOTAL_RETRY_TIME_MS;
 import static com.netflix.iceberg.TableProperties.COMMIT_TOTAL_RETRY_TIME_MS_DEFAULT;
 import static com.netflix.iceberg.spark.SparkSchemaUtil.convert;
 
-// TODO: parameterize DataSourceWriter with subclass of WriterCommitMessage
 class Writer implements BatchWrite {
   private static final Logger LOG = LoggerFactory.getLogger(Writer.class);
 
@@ -93,12 +92,6 @@ class Writer implements BatchWrite {
     return new WriterFactory(
         table.spec(), format, table.locationProvider(), table.properties(), fileIo, encryptionManager);
   }
-
-//  @Override
-//  public DataWriterFactory<InternalRow> createWriterFactory() {
-//    return new WriterFactory(
-//        table.spec(), format, table.locationProvider(), table.properties(), fileIo, encryptionManager);
-//  }
 
   @Override
   public void commit(WriterCommitMessage[] messages) {

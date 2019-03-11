@@ -160,7 +160,7 @@ class ParquetWriter<T> implements FileAppender<T>, Closeable {
     this.recordCount = 0;
 
     PageWriteStore pageStore = pageStoreCtor.newInstance(
-        compressor, parquetSchema, props.getAllocator(), 0);
+        compressor, parquetSchema, props.getAllocator(), props.getColumnIndexTruncateLength());
 
     this.flushPageStoreToWriter = flushToWriter.bind(pageStore);
     this.writeStore = props.newColumnWriteStore(parquetSchema, pageStore);
