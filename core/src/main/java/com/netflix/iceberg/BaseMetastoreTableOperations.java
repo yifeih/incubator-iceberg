@@ -20,8 +20,6 @@
 package com.netflix.iceberg;
 
 import com.google.common.base.Objects;
-import com.netflix.iceberg.encryption.EncryptionManager;
-import com.netflix.iceberg.encryption.PlaintextEncryptionManager;
 import com.netflix.iceberg.exceptions.RuntimeIOException;
 import com.netflix.iceberg.hadoop.HadoopFileIO;
 import com.netflix.iceberg.io.FileIO;
@@ -137,11 +135,6 @@ public abstract class BaseMetastoreTableOperations implements TableOperations {
   @Override
   public FileIO io() {
     return fileIo;
-  }
-
-  @Override
-  public EncryptionManager encryption() {
-    return new PlaintextEncryptionManager();
   }
 
   @Override

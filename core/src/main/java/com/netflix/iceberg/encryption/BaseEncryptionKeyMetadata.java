@@ -53,6 +53,6 @@ class BaseEncryptionKeyMetadata implements EncryptionKeyMetadata {
   @Override
   public EncryptionKeyMetadata copy() {
     return new BaseEncryptionKeyMetadata(
-        keyMetadata == null ? null : ByteBuffers.copy(keyMetadata));
+        ByteBuffers.copy(keyMetadata));
   }
 }
