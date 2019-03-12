@@ -22,13 +22,9 @@ package com.netflix.iceberg.spark.data;
 import com.netflix.iceberg.expressions.Literal;
 import com.netflix.iceberg.types.Types;
 import org.apache.spark.sql.catalyst.util.DateTimeUtils;
-import org.apache.spark.sql.catalyst.util.Iso8601TimestampFormatter;
-import org.apache.spark.sql.catalyst.util.TimestampFormatter;
 import org.apache.spark.sql.catalyst.util.TimestampFormatter$;
 import org.junit.Assert;
 import org.junit.Test;
-
-import java.text.SimpleDateFormat;
 import java.util.TimeZone;
 
 public class TestSparkDateTimes {

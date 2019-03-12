@@ -28,7 +28,6 @@ import org.apache.spark.sql.sources.DataSourceRegister;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
 import org.apache.spark.sql.sources.v2.TableProvider;
 import org.apache.spark.sql.types.StructType;
-
 import java.util.Map;
 import java.util.Optional;
 
