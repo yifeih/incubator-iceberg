@@ -54,7 +54,13 @@ import org.apache.spark.sql.catalyst.expressions.AttributeReference;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.catalyst.expressions.JoinedRow;
 import org.apache.spark.sql.catalyst.expressions.UnsafeProjection;
-import org.apache.spark.sql.sources.v2.reader.*;
+import org.apache.spark.sql.sources.v2.reader.Batch;
+import org.apache.spark.sql.sources.v2.reader.InputPartition;
+import org.apache.spark.sql.sources.v2.reader.PartitionReader;
+import org.apache.spark.sql.sources.v2.reader.PartitionReaderFactory;
+import org.apache.spark.sql.sources.v2.reader.Scan;
+import org.apache.spark.sql.sources.v2.reader.Statistics;
+import org.apache.spark.sql.sources.v2.reader.SupportsReportStatistics;
 import org.apache.spark.sql.types.BinaryType;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.Decimal;
@@ -245,12 +251,11 @@ class Reader implements Scan, Batch, SupportsReportStatistics {
         .impl(UnsafeProjection.class, InternalRow.class)
         .build();
 
+    private final Iterator<FileScanTask> tasks;
     private final Schema tableSchema;
     private final Schema expectedSchema;
     private final FileIO fileIo;
     private final Map<String, InputFile> inputFiles;
-
-    private final Iterator<FileScanTask> tasks;
 
     private Iterator<InternalRow> currentIterator = null;
     private Closeable currentCloseable = null;
@@ -376,9 +381,9 @@ class Reader implements Scan, Batch, SupportsReportStatistics {
     }
 
     private Iterator<InternalRow> open(FileScanTask task, Schema readSchema) {
-      CloseableIterable<InternalRow> iter;
       InputFile location = inputFiles.get(task.file().path().toString());
       Preconditions.checkNotNull(location, "Could not find InputFile associated with FileScanTask");
+      CloseableIterable<InternalRow> iter;
       switch (task.file().format()) {
         case PARQUET:
           iter = newParquetIterable(location, task, readSchema);
@@ -398,10 +403,10 @@ class Reader implements Scan, Batch, SupportsReportStatistics {
       return iter.iterator();
     }
 
-    private CloseableIterable<InternalRow> newAvroIterable(InputFile inputFile,
-                                                         FileScanTask task,
-                                                         Schema readSchema) {
-      return Avro.read(inputFile)
+    private CloseableIterable<InternalRow> newAvroIterable(InputFile location,
+                                                      FileScanTask task,
+                                                      Schema readSchema) {
+      return Avro.read(location)
           .reuseContainers()
           .project(readSchema)
           .split(task.start(), task.length())

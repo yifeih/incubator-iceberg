@@ -20,11 +20,8 @@
 package com.netflix.iceberg.spark.source;
 
 import com.google.common.base.Preconditions;
-import com.netflix.iceberg.Schema;
 import com.netflix.iceberg.Table;
 import com.netflix.iceberg.hadoop.HadoopTables;
-import com.netflix.iceberg.spark.SparkSchemaUtil;
-import com.netflix.iceberg.types.CheckCompatibility;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.sources.DataSourceRegister;
@@ -32,13 +29,10 @@ import org.apache.spark.sql.sources.v2.DataSourceOptions;
 import org.apache.spark.sql.sources.v2.TableProvider;
 import org.apache.spark.sql.types.StructType;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-public class IcebergSource implements
-        TableProvider,
-        DataSourceRegister {
+public class IcebergSource implements TableProvider, DataSourceRegister {
 
   private SparkSession lazySpark = null;
   private Configuration lazyConf = null;

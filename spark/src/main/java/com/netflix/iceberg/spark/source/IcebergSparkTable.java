@@ -59,11 +59,15 @@ public class IcebergSparkTable implements SupportsBatchRead, SupportsBatchWrite 
 
   @Override
   public WriteBuilder newWriteBuilder(DataSourceOptions options) {
-    IcebergWriterBuilder writerBuilder = new IcebergWriterBuilder(table);
-
     Optional<String> formatOption = options.get("iceberg.write.format");
-    formatOption.ifPresent(writerBuilder::setFileFormat);
-    return writerBuilder;
+    if (formatOption.isPresent()) {
+      return new IcebergWriterBuilder(table, FileFormat.valueOf(formatOption.get().toUpperCase(Locale.ENGLISH)));
+    }
+    return new IcebergWriterBuilder(
+        table,
+        FileFormat.valueOf(table.properties()
+            .getOrDefault(DEFAULT_FILE_FORMAT, DEFAULT_FILE_FORMAT_DEFAULT)
+            .toUpperCase(Locale.ENGLISH)));
   }
 
   @Override
@@ -80,17 +84,11 @@ public class IcebergSparkTable implements SupportsBatchRead, SupportsBatchWrite 
   private static class IcebergWriterBuilder implements WriteBuilder,
       SupportsSaveMode {
     private final Table table;
-    private FileFormat fileFormat;
+    private final FileFormat fileFormat;
 
-    public IcebergWriterBuilder(Table table) {
+    public IcebergWriterBuilder(Table table, FileFormat fileFormat) {
       this.table = table;
-      this.fileFormat = FileFormat.valueOf(table.properties()
-          .getOrDefault(DEFAULT_FILE_FORMAT, DEFAULT_FILE_FORMAT_DEFAULT)
-          .toUpperCase(Locale.ENGLISH));
-    }
-
-    public void setFileFormat(String format) {
-      fileFormat = FileFormat.valueOf(format.toUpperCase(Locale.ENGLISH));
+      this.fileFormat = fileFormat;
     }
 
     @Override
