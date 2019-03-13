@@ -53,9 +53,11 @@ import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.sources.GreaterThan;
 import org.apache.spark.sql.sources.LessThan;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
-import org.apache.spark.sql.sources.v2.reader.DataSourceReader;
+import org.apache.spark.sql.sources.v2.SupportsBatchRead;
+import org.apache.spark.sql.sources.v2.TableProvider;
+import org.apache.spark.sql.sources.v2.reader.Batch;
 import org.apache.spark.sql.sources.v2.reader.InputPartition;
-import org.apache.spark.sql.sources.v2.reader.InputPartitionReader;
+import org.apache.spark.sql.sources.v2.reader.ScanBuilder;
 import org.apache.spark.sql.sources.v2.reader.SupportsPushDownFilters;
 import org.apache.spark.sql.types.IntegerType$;
 import org.junit.AfterClass;
@@ -205,12 +207,9 @@ public class TestFilteredScan {
     IcebergSource source = new IcebergSource();
 
     for (int i = 0; i < 10; i += 1) {
-      DataSourceReader reader = source.createReader(options);
-
-      pushFilters(reader, EqualTo.apply("id", i));
-
-      List<InputPartition<InternalRow>> tasks = reader.planInputPartitions();
-      Assert.assertEquals("Should only create one task for a small file", 1, tasks.size());
+      Batch reader = getBatchReader(source, options, EqualTo.apply("id", i));
+      InputPartition[] tasks = reader.planInputPartitions();
+      Assert.assertEquals("Should only create one task for a small file", 1, tasks.length);
 
       // validate row filtering
       assertEqualsSafe(SCHEMA.asStruct(), expected(i),
@@ -226,12 +225,10 @@ public class TestFilteredScan {
 
     IcebergSource source = new IcebergSource();
 
-    DataSourceReader reader = source.createReader(options);
+    Batch reader = getBatchReader(source, options, LessThan.apply("ts", "2017-12-22T00:00:00+00:00"));
 
-    pushFilters(reader, LessThan.apply("ts", "2017-12-22T00:00:00+00:00"));
-
-    List<InputPartition<InternalRow>> tasks = reader.planInputPartitions();
-    Assert.assertEquals("Should only create one task for a small file", 1, tasks.size());
+    InputPartition[] tasks = reader.planInputPartitions();
+    Assert.assertEquals("Should only create one task for a small file", 1, tasks.length);
 
     assertEqualsSafe(SCHEMA.asStruct(), expected(5,6,7,8,9),
         read(unpartitioned.toString(), "ts < cast('2017-12-22 00:00:00+00:00' as timestamp)"));
@@ -246,19 +243,16 @@ public class TestFilteredScan {
     );
 
     IcebergSource source = new IcebergSource();
-    DataSourceReader unfiltered = source.createReader(options);
+    Batch unfiltered = getBatchReader(source, options);
     Assert.assertEquals("Unfiltered table should created 4 read tasks",
-        4, unfiltered.planInputPartitions().size());
+        4, unfiltered.planInputPartitions().length);
 
     for (int i = 0; i < 10; i += 1) {
-      DataSourceReader reader = source.createReader(options);
-
-      pushFilters(reader, EqualTo.apply("id", i));
-
-      List<InputPartition<InternalRow>> tasks = reader.planInputPartitions();
+      Batch reader = getBatchReader(source, options, EqualTo.apply("id", i));
+      InputPartition[] tasks = reader.planInputPartitions();
 
       // validate predicate push-down
-      Assert.assertEquals("Should create one task for a single bucket", 1, tasks.size());
+      Assert.assertEquals("Should create one task for a single bucket", 1, tasks.length);
 
       // validate row filtering
       assertEqualsSafe(SCHEMA.asStruct(), expected(i), read(location.toString(), "id = " + i));
@@ -274,31 +268,28 @@ public class TestFilteredScan {
     );
 
     IcebergSource source = new IcebergSource();
-    DataSourceReader unfiltered = source.createReader(options);
+    Batch unfiltered = getBatchReader(source, options);
     Assert.assertEquals("Unfiltered table should created 2 read tasks",
-        2, unfiltered.planInputPartitions().size());
+        2, unfiltered.planInputPartitions().length);
 
     {
-      DataSourceReader reader = source.createReader(options);
+      Batch reader = getBatchReader(source, options, LessThan.apply("ts", "2017-12-22T00:00:00+00:00"));
 
-      pushFilters(reader, LessThan.apply("ts", "2017-12-22T00:00:00+00:00"));
-
-      List<InputPartition<InternalRow>> tasks = reader.planInputPartitions();
-      Assert.assertEquals("Should create one task for 2017-12-21", 1, tasks.size());
+      InputPartition[] tasks = reader.planInputPartitions();
+      Assert.assertEquals("Should create one task for 2017-12-21", 1, tasks.length);
 
       assertEqualsSafe(SCHEMA.asStruct(), expected(5, 6, 7, 8, 9),
           read(location.toString(), "ts < cast('2017-12-22 00:00:00+00:00' as timestamp)"));
     }
 
     {
-      DataSourceReader reader = source.createReader(options);
+      Batch reader = getBatchReader(source, options,
+          And.apply(
+              GreaterThan.apply("ts", "2017-12-22T06:00:00+00:00"),
+              LessThan.apply("ts", "2017-12-22T08:00:00+00:00")));
 
-      pushFilters(reader, And.apply(
-          GreaterThan.apply("ts", "2017-12-22T06:00:00+00:00"),
-          LessThan.apply("ts", "2017-12-22T08:00:00+00:00")));
-
-      List<InputPartition<InternalRow>> tasks = reader.planInputPartitions();
-      Assert.assertEquals("Should create one task for 2017-12-22", 1, tasks.size());
+      InputPartition[] tasks = reader.planInputPartitions();
+      Assert.assertEquals("Should create one task for 2017-12-22", 1, tasks.length);
 
       assertEqualsSafe(SCHEMA.asStruct(), expected(1, 2), read(location.toString(),
           "ts > cast('2017-12-22 06:00:00+00:00' as timestamp) and " +
@@ -315,31 +306,28 @@ public class TestFilteredScan {
     );
 
     IcebergSource source = new IcebergSource();
-    DataSourceReader unfiltered = source.createReader(options);
+    Batch unfiltered = getBatchReader(source, options);
     Assert.assertEquals("Unfiltered table should created 9 read tasks",
-        9, unfiltered.planInputPartitions().size());
+        9, unfiltered.planInputPartitions().length);
 
     {
-      DataSourceReader reader = source.createReader(options);
+      Batch reader = getBatchReader(source, options, LessThan.apply("ts", "2017-12-22T00:00:00+00:00"));
 
-      pushFilters(reader, LessThan.apply("ts", "2017-12-22T00:00:00+00:00"));
-
-      List<InputPartition<InternalRow>> tasks = reader.planInputPartitions();
-      Assert.assertEquals("Should create 4 tasks for 2017-12-21: 15, 17, 21, 22", 4, tasks.size());
+      InputPartition[] tasks = reader.planInputPartitions();
+      Assert.assertEquals("Should create 4 tasks for 2017-12-21: 15, 17, 21, 22", 4, tasks.length);
 
       assertEqualsSafe(SCHEMA.asStruct(), expected(8, 9, 7, 6, 5),
           read(location.toString(), "ts < cast('2017-12-22 00:00:00+00:00' as timestamp)"));
     }
 
     {
-      DataSourceReader reader = source.createReader(options);
+      Batch reader = getBatchReader(source, options,
+          And.apply(
+              GreaterThan.apply("ts", "2017-12-22T06:00:00+00:00"),
+              LessThan.apply("ts", "2017-12-22T08:00:00+00:00")));
 
-      pushFilters(reader, And.apply(
-          GreaterThan.apply("ts", "2017-12-22T06:00:00+00:00"),
-          LessThan.apply("ts", "2017-12-22T08:00:00+00:00")));
-
-      List<InputPartition<InternalRow>> tasks = reader.planInputPartitions();
-      Assert.assertEquals("Should create 2 tasks for 2017-12-22: 6, 7", 2, tasks.size());
+      InputPartition[] tasks = reader.planInputPartitions();
+      Assert.assertEquals("Should create 2 tasks for 2017-12-22: 6, 7", 2, tasks.length);
 
       assertEqualsSafe(SCHEMA.asStruct(), expected(2, 1), read(location.toString(),
           "ts > cast('2017-12-22 06:00:00+00:00' as timestamp) and " +
@@ -377,6 +365,14 @@ public class TestFilteredScan {
               "ts < cast('2017-12-22 08:00:00+00:00' as timestamp)",
           "id"));
     }
+  }
+
+  private static Batch getBatchReader(TableProvider source, DataSourceOptions options, Filter... filters) {
+    SupportsBatchRead table = (SupportsBatchRead) source.getTable(options);
+    ScanBuilder scanBuilder = table.newScanBuilder(options);
+    pushFilters(scanBuilder, filters);
+
+    return scanBuilder.build().toBatch();
   }
 
   private static Record projectFlat(Schema projection, Record record) {
@@ -418,7 +414,7 @@ public class TestFilteredScan {
     return expected;
   }
 
-  private void pushFilters(DataSourceReader reader, Filter... filters) {
+  private static void pushFilters(ScanBuilder reader, Filter... filters) {
     Assert.assertTrue(reader instanceof SupportsPushDownFilters);
     SupportsPushDownFilters filterable = (SupportsPushDownFilters) reader;
     filterable.pushFilters(filters);

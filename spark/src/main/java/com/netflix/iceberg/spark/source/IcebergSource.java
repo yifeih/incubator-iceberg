@@ -20,32 +20,18 @@
 package com.netflix.iceberg.spark.source;
 
 import com.google.common.base.Preconditions;
-import com.netflix.iceberg.FileFormat;
-import com.netflix.iceberg.Schema;
 import com.netflix.iceberg.Table;
 import com.netflix.iceberg.hadoop.HadoopTables;
-import com.netflix.iceberg.spark.SparkSchemaUtil;
-import com.netflix.iceberg.types.CheckCompatibility;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.sources.DataSourceRegister;
-import org.apache.spark.sql.sources.v2.DataSourceV2;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
-import org.apache.spark.sql.sources.v2.ReadSupport;
-import org.apache.spark.sql.sources.v2.WriteSupport;
-import org.apache.spark.sql.sources.v2.reader.DataSourceReader;
-import org.apache.spark.sql.sources.v2.writer.DataSourceWriter;
+import org.apache.spark.sql.sources.v2.TableProvider;
 import org.apache.spark.sql.types.StructType;
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.netflix.iceberg.TableProperties.DEFAULT_FILE_FORMAT;
-import static com.netflix.iceberg.TableProperties.DEFAULT_FILE_FORMAT_DEFAULT;
-
-public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, DataSourceRegister {
+public class IcebergSource implements TableProvider, DataSourceRegister {
 
   private SparkSession lazySpark = null;
   private Configuration lazyConf = null;
@@ -53,45 +39,6 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
   @Override
   public String shortName() {
     return "iceberg";
-  }
-
-  @Override
-  public DataSourceReader createReader(DataSourceOptions options) {
-    Configuration conf = new Configuration(lazyBaseConf());
-    Table table = getTableAndResolveHadoopConfiguration(options, conf);
-    return new Reader(table);
-  }
-
-  @Override
-  public Optional<DataSourceWriter> createWriter(String jobId, StructType dfStruct, SaveMode mode,
-                                                   DataSourceOptions options) {
-    Preconditions.checkArgument(mode == SaveMode.Append, "Save mode %s is not supported", mode);
-    Configuration conf = new Configuration(lazyBaseConf());
-    Table table = getTableAndResolveHadoopConfiguration(options, conf);
-
-    Schema dfSchema = SparkSchemaUtil.convert(table.schema(), dfStruct);
-    List<String> errors = CheckCompatibility.writeCompatibilityErrors(table.schema(), dfSchema);
-    if (!errors.isEmpty()) {
-      StringBuilder sb = new StringBuilder();
-      sb.append("Cannot write incompatible dataframe to table with schema:\n")
-          .append(table.schema()).append("\nProblems:");
-      for (String error : errors) {
-        sb.append("\n* ").append(error);
-      }
-      throw new IllegalArgumentException(sb.toString());
-    }
-
-    Optional<String> formatOption = options.get("iceberg.write.format");
-    FileFormat format;
-    if (formatOption.isPresent()) {
-      format = FileFormat.valueOf(formatOption.get().toUpperCase(Locale.ENGLISH));
-    } else {
-      format = FileFormat.valueOf(table.properties()
-          .getOrDefault(DEFAULT_FILE_FORMAT, DEFAULT_FILE_FORMAT_DEFAULT)
-          .toUpperCase(Locale.ENGLISH));
-    }
-
-    return Optional.of(new Writer(table, format));
   }
 
   protected Table findTable(DataSourceOptions options, Configuration conf) {
@@ -135,5 +82,17 @@ public class IcebergSource implements DataSourceV2, ReadSupport, WriteSupport, D
     options.keySet().stream()
         .filter(key -> key.startsWith("iceberg.hadoop"))
         .forEach(key -> baseConf.set(key.replaceFirst("iceberg.hadoop", ""), options.get(key)));
+  }
+
+  @Override
+  public org.apache.spark.sql.sources.v2.Table getTable(DataSourceOptions options) {
+    Configuration conf = new Configuration(lazyBaseConf());
+    Table table = getTableAndResolveHadoopConfiguration(options, conf);
+    return new IcebergSparkTable(table);
+  }
+
+  @Override
+  public org.apache.spark.sql.sources.v2.Table getTable(DataSourceOptions options, StructType schema) {
+    throw new UnsupportedOperationException("Schema should never be passed into an iceberg table");
   }
 }

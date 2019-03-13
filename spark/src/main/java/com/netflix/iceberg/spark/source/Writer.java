@@ -45,14 +45,13 @@ import com.netflix.iceberg.spark.data.SparkAvroWriter;
 import com.netflix.iceberg.util.Tasks;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.execution.datasources.parquet.ParquetWriteSupport;
-import org.apache.spark.sql.sources.v2.writer.DataSourceWriter;
+import org.apache.spark.sql.sources.v2.writer.BatchWrite;
 import org.apache.spark.sql.sources.v2.writer.DataWriter;
 import org.apache.spark.sql.sources.v2.writer.DataWriterFactory;
 import org.apache.spark.sql.sources.v2.writer.WriterCommitMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.Closeable;
-import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
@@ -73,8 +72,7 @@ import static com.netflix.iceberg.TableProperties.COMMIT_TOTAL_RETRY_TIME_MS;
 import static com.netflix.iceberg.TableProperties.COMMIT_TOTAL_RETRY_TIME_MS_DEFAULT;
 import static com.netflix.iceberg.spark.SparkSchemaUtil.convert;
 
-// TODO: parameterize DataSourceWriter with subclass of WriterCommitMessage
-class Writer implements DataSourceWriter {
+class Writer implements BatchWrite {
   private static final Logger LOG = LoggerFactory.getLogger(Writer.class);
 
   private final Table table;
@@ -90,7 +88,7 @@ class Writer implements DataSourceWriter {
   }
 
   @Override
-  public DataWriterFactory<InternalRow> createWriterFactory() {
+  public DataWriterFactory createBatchWriterFactory() {
     return new WriterFactory(
         table.spec(), format, table.locationProvider(), table.properties(), fileIo, encryptionManager);
   }
@@ -172,7 +170,7 @@ class Writer implements DataSourceWriter {
     }
   }
 
-  private static class WriterFactory implements DataWriterFactory<InternalRow> {
+  private static class WriterFactory implements DataWriterFactory {
     private final PartitionSpec spec;
     private final FileFormat format;
     private final LocationProvider locations;
@@ -192,7 +190,7 @@ class Writer implements DataSourceWriter {
     }
 
     @Override
-    public DataWriter<InternalRow> createDataWriter(int partitionId, long taskId, long epochId) {
+    public DataWriter<InternalRow> createWriter(int partitionId, long taskId) {
       String filename = format.addExtension(String.format("%05d-%d-%s", partitionId, taskId, uuid));
       AppenderFactory<InternalRow> factory = new SparkAppenderFactory();
       if (spec.fields().isEmpty()) {
