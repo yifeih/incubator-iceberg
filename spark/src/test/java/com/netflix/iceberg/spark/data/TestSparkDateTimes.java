@@ -22,6 +22,7 @@ package com.netflix.iceberg.spark.data;
 import com.netflix.iceberg.expressions.Literal;
 import com.netflix.iceberg.types.Types;
 import org.apache.spark.sql.catalyst.util.DateTimeUtils;
+import org.apache.spark.sql.catalyst.util.TimestampFormatter$;
 import org.junit.Assert;
 import org.junit.Test;
 import java.util.TimeZone;
@@ -65,7 +66,9 @@ public class TestSparkDateTimes {
 
   public void checkSparkTimestamp(String timestampString, String sparkRepr) {
     Literal<Long> ts = Literal.of(timestampString).to(Types.TimestampType.withZone());
-    String sparkTimestamp = DateTimeUtils.timestampToString(ts.value());
+    String sparkTimestamp = DateTimeUtils.timestampToString(
+        TimestampFormatter$.MODULE$.apply(DateTimeUtils.defaultTimeZone()),
+        ts.value());
     System.err.println(timestampString + ": " + ts.value());
     Assert.assertEquals("Should be the same timestamp (" + ts.value() + ")",
         sparkRepr, sparkTimestamp);
