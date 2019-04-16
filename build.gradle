@@ -147,7 +147,11 @@ project(':iceberg-hive') {
       exclude group: 'org.apache.avro', module: 'avro'
     }
 
-    testCompile("org.apache.hive:hive-exec:$hiveVersion") {
+    testCompile("org.apache.hive:hive-exec:$hiveVersion:core") {
+      exclude group: 'org.apache.avro', module: 'avro'
+    }
+
+    testCompile("org.apache.hive:hive-metastore:$hiveVersion") {
       exclude group: 'org.apache.avro', module: 'avro'
     }
 
